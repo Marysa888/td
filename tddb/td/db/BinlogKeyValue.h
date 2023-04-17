@@ -82,7 +82,7 @@ class BinlogKeyValue final : public KeyValueSyncInterface {
         name,
         [&](const BinlogEvent &binlog_event) {
           Event event;
-          event.parse(TlParser(binlog_event.data_));
+          event.parse(TlParser(binlog_event.get_data()));
           map_.emplace(event.key.str(), std::make_pair(event.value.str(), binlog_event.id_));
         },
         std::move(db_key), DbKey::empty(), scheduler_id));
@@ -103,7 +103,7 @@ class BinlogKeyValue final : public KeyValueSyncInterface {
 
   void external_init_handle(const BinlogEvent &binlog_event) {
     Event event;
-    event.parse(TlParser(binlog_event.data_));
+    event.parse(TlParser(binlog_event.get_data()));
     map_.emplace(event.key.str(), std::make_pair(event.value.str(), binlog_event.id_));
   }
 
@@ -164,6 +164,23 @@ class BinlogKeyValue final : public KeyValueSyncInterface {
     add_event(seq_no, BinlogEvent::create_raw(event_id, BinlogEvent::ServiceTypes::Empty, BinlogEvent::Flags::Rewrite,
                                               EmptyStorer()));
     return seq_no;
+  }
+
+  SeqNo erase_batch(vector<string> keys) final {
+    auto lock = rw_mutex_.lock_write().move_as_ok();
+    vector<uint64> log_event_ids;
+    for (auto &key : keys) {
+      auto it = map_.find(key);
+      if (it != map_.end()) {
+        log_event_ids.push_back(it->second.second);
+        map_.erase(it);
+      }
+    }
+    if (log_event_ids.empty()) {
+      return 0;
+    }
+    VLOG(binlog) << "Remove value of keys " << keys;
+    return binlog_->erase_batch(std::move(log_event_ids));
   }
 
   void add_event(uint64 seq_no, BufferSlice &&event) {

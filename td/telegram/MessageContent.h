@@ -113,7 +113,7 @@ tl_object_ptr<telegram_api::InputMedia> get_input_media(const MessageContent *co
                                                         tl_object_ptr<telegram_api::InputFile> input_file,
                                                         tl_object_ptr<telegram_api::InputFile> input_thumbnail,
                                                         FileId file_id, FileId thumbnail_file_id, int32 ttl,
-                                                        bool force);
+                                                        const string &emoji, bool force);
 
 tl_object_ptr<telegram_api::InputMedia> get_input_media(const MessageContent *content, Td *td, int32 ttl,
                                                         const string &emoji, bool force);
@@ -254,7 +254,7 @@ void update_expired_message_content(unique_ptr<MessageContent> &content);
 
 void update_failed_to_send_message_content(Td *td, unique_ptr<MessageContent> &content);
 
-void add_message_content_dependencies(Dependencies &dependencies, const MessageContent *message_content);
+void add_message_content_dependencies(Dependencies &dependencies, const MessageContent *message_content, bool is_bot);
 
 void update_forum_topic_info_by_service_message_content(Td *td, const MessageContent *content, DialogId dialog_id,
                                                         MessageId top_thread_message_id);

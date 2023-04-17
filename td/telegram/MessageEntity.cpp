@@ -24,7 +24,6 @@
 #include "td/utils/misc.h"
 #include "td/utils/Promise.h"
 #include "td/utils/SliceBuilder.h"
-#include "td/utils/StackAllocator.h"
 #include "td/utils/StringBuilder.h"
 #include "td/utils/unicode.h"
 #include "td/utils/utf8.h"
@@ -3410,7 +3409,7 @@ Result<vector<MessageEntity>> get_message_entities(const ContactsManager *contac
         break;
       }
       case td_api::textEntityTypeMentionName::ID: {
-        auto entity = static_cast<td_api::textEntityTypeMentionName *>(input_entity->type_.get());
+        auto entity = static_cast<const td_api::textEntityTypeMentionName *>(input_entity->type_.get());
         UserId user_id(entity->user_id_);
         if (contacts_manager != nullptr) {
           TRY_STATUS(contacts_manager->get_input_user(user_id));
@@ -3419,7 +3418,7 @@ Result<vector<MessageEntity>> get_message_entities(const ContactsManager *contac
         break;
       }
       case td_api::textEntityTypeMediaTimestamp::ID: {
-        auto entity = static_cast<td_api::textEntityTypeMediaTimestamp *>(input_entity->type_.get());
+        auto entity = static_cast<const td_api::textEntityTypeMediaTimestamp *>(input_entity->type_.get());
         if (entity->media_timestamp_ < 0) {
           return Status::Error(400, "Invalid media timestamp specified");
         }
@@ -3430,7 +3429,7 @@ Result<vector<MessageEntity>> get_message_entities(const ContactsManager *contac
         entities.emplace_back(MessageEntity::Type::Spoiler, offset, length);
         break;
       case td_api::textEntityTypeCustomEmoji::ID: {
-        auto entity = static_cast<td_api::textEntityTypeCustomEmoji *>(input_entity->type_.get());
+        auto entity = static_cast<const td_api::textEntityTypeCustomEmoji *>(input_entity->type_.get());
         CustomEmojiId custom_emoji_id(entity->custom_emoji_id_);
         if (!custom_emoji_id.is_valid()) {
           return Status::Error(400, "Invalid custom emoji identifier specified");
@@ -3723,6 +3722,29 @@ vector<MessageEntity> get_message_entities(Td *td, vector<tl_object_ptr<secret_a
   }
 
   return entities;
+}
+
+telegram_api::object_ptr<telegram_api::textWithEntities> get_input_text_with_entities(
+    const ContactsManager *contacts_manager, const FormattedText &text, const char *source) {
+  return telegram_api::make_object<telegram_api::textWithEntities>(
+      text.text, get_input_message_entities(contacts_manager, text.entities, source));
+}
+
+FormattedText get_formatted_text(const ContactsManager *contacts_manager,
+                                 telegram_api::object_ptr<telegram_api::textWithEntities> text_with_entities,
+                                 bool allow_empty, bool skip_new_entities, bool skip_bot_commands,
+                                 bool skip_media_timestamps, bool skip_trim, const char *source) {
+  CHECK(text_with_entities != nullptr);
+  auto entities = get_message_entities(contacts_manager, std::move(text_with_entities->entities_), source);
+  auto status = fix_formatted_text(text_with_entities->text_, entities, allow_empty, skip_new_entities,
+                                   skip_bot_commands, skip_media_timestamps, skip_trim);
+  if (status.is_error()) {
+    if (!clean_input_string(text_with_entities->text_)) {
+      text_with_entities->text_.clear();
+    }
+    entities = find_entities(text_with_entities->text_, skip_bot_commands, skip_media_timestamps);
+  }
+  return {std::move(text_with_entities->text_), std::move(entities)};
 }
 
 // like clean_input_string but also fixes entities
@@ -4131,7 +4153,7 @@ static void merge_new_entities(vector<MessageEntity> &entities, vector<MessageEn
 }
 
 Status fix_formatted_text(string &text, vector<MessageEntity> &entities, bool allow_empty, bool skip_new_entities,
-                          bool skip_bot_commands, bool skip_media_timestamps, bool for_draft) {
+                          bool skip_bot_commands, bool skip_media_timestamps, bool skip_trim) {
   string result;
   if (entities.empty()) {
     // fast path
@@ -4179,7 +4201,7 @@ Status fix_formatted_text(string &text, vector<MessageEntity> &entities, bool al
   // some splittable entities may be needed to be concatenated
   fix_entities(entities);
 
-  if (for_draft) {
+  if (skip_trim) {
     text = std::move(result);
   } else {
     // rtrim
@@ -4307,7 +4329,7 @@ td_api::object_ptr<td_api::formattedText> extract_input_caption(
 
 Result<FormattedText> get_formatted_text(const Td *td, DialogId dialog_id,
                                          td_api::object_ptr<td_api::formattedText> &&text, bool is_bot,
-                                         bool allow_empty, bool skip_media_timestamps, bool for_draft) {
+                                         bool allow_empty, bool skip_media_timestamps, bool skip_trim) {
   if (text == nullptr) {
     if (allow_empty) {
       return FormattedText();
@@ -4320,13 +4342,13 @@ Result<FormattedText> get_formatted_text(const Td *td, DialogId dialog_id,
   auto need_skip_bot_commands = need_always_skip_bot_commands(td->contacts_manager_.get(), dialog_id, is_bot);
   bool parse_markdown = td->option_manager_->get_option_boolean("always_parse_markdown");
   TRY_STATUS(fix_formatted_text(text->text_, entities, allow_empty, parse_markdown, need_skip_bot_commands,
-                                is_bot || skip_media_timestamps || parse_markdown, for_draft));
+                                is_bot || skip_media_timestamps || parse_markdown, skip_trim));
 
   FormattedText result{std::move(text->text_), std::move(entities)};
   if (parse_markdown) {
     result = parse_markdown_v3(std::move(result));
     fix_formatted_text(result.text, result.entities, allow_empty, false, need_skip_bot_commands,
-                       is_bot || skip_media_timestamps, for_draft)
+                       is_bot || skip_media_timestamps, skip_trim)
         .ensure();
   }
   remove_unallowed_entities(td, result, dialog_id);
@@ -4438,10 +4460,9 @@ vector<tl_object_ptr<telegram_api::MessageEntity>> get_input_message_entities(co
             make_tl_object<telegram_api::messageEntityTextUrl>(entity.offset, entity.length, entity.argument));
         break;
       case MessageEntity::Type::MentionName: {
-        auto r_input_user = contacts_manager->get_input_user(entity.user_id);
-        LOG_CHECK(r_input_user.is_ok()) << source << ' ' << entity.user_id << ' ' << r_input_user.error();
+        auto input_user = contacts_manager->get_input_user_force(entity.user_id);
         result.push_back(make_tl_object<telegram_api::inputMessageEntityMentionName>(entity.offset, entity.length,
-                                                                                     r_input_user.move_as_ok()));
+                                                                                     std::move(input_user)));
         break;
       }
       default:

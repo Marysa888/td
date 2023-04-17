@@ -93,6 +93,17 @@ class Binlog {
     return seq_no;
   }
 
+  uint64 erase_batch(vector<uint64> event_ids) {
+    if (event_ids.empty()) {
+      return 0;
+    }
+    auto seq_no = next_event_id(0);
+    for (auto event_id : event_ids) {
+      erase(event_id);
+    }
+    return seq_no;
+  }
+
   void add_raw_event(BufferSlice &&raw_event, BinlogDebugInfo info) {
     add_event(BinlogEvent(std::move(raw_event), info));
   }
@@ -132,7 +143,7 @@ class Binlog {
   enum class EncryptionType { None, AesCtr } encryption_type_ = EncryptionType::None;
 
   // AesCtrEncryption
-  BufferSlice aes_ctr_key_salt_;
+  string aes_ctr_key_salt_;
   UInt256 aes_ctr_key_;
   AesCtrState aes_ctr_state_;
 
@@ -144,12 +155,13 @@ class Binlog {
   int64 fd_size_{0};
   uint64 fd_events_{0};
   string path_;
-  std::vector<BinlogEvent> pending_events_;
+  vector<BinlogEvent> pending_events_;
   unique_ptr<detail::BinlogEventsProcessor> processor_;
   unique_ptr<detail::BinlogEventsBuffer> events_buffer_;
   bool in_flush_events_buffer_{false};
   uint64 last_event_id_{0};
   double need_flush_since_ = 0;
+  double next_buffer_flush_time_ = 0;
   bool need_sync_{false};
   enum class State { Empty, Load, Reindex, Run } state_{State::Empty};
 

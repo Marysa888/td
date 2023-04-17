@@ -35,8 +35,8 @@ MessageExtendedMedia::MessageExtendedMedia(
       dimensions_ = get_dimensions(media->w_, media->h_, "MessageExtendedMedia");
       if (media->thumb_ != nullptr) {
         if (media->thumb_->get_id() == telegram_api::photoStrippedSize::ID) {
-          auto thumb = move_tl_object_as<telegram_api::photoStrippedSize>(media->thumb_);
-          minithumbnail_ = thumb->bytes_.as_slice().str();
+          auto thumbnail = move_tl_object_as<telegram_api::photoStrippedSize>(media->thumb_);
+          minithumbnail_ = thumbnail->bytes_.as_slice().str();
         } else {
           LOG(ERROR) << "Receive " << to_string(media->thumb_);
         }
@@ -53,7 +53,7 @@ MessageExtendedMedia::MessageExtendedMedia(
             break;
           }
 
-          photo_ = get_photo(td->file_manager_.get(), std::move(photo->photo_), owner_dialog_id);
+          photo_ = get_photo(td, std::move(photo->photo_), owner_dialog_id);
           if (photo_.is_empty()) {
             break;
           }

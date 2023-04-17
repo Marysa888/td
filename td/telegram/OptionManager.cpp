@@ -283,9 +283,9 @@ bool OptionManager::is_internal_option(Slice name) {
              name == "revoke_time_limit" || name == "revoke_pm_time_limit";
     case 's':
       return name == "saved_animations_limit" || name == "saved_gifs_limit_default" ||
-             name == "saved_gifs_limit_premium" || name == "session_count" || name == "stickers_faved_limit_default" ||
-             name == "stickers_faved_limit_premium" || name == "stickers_normal_by_emoji_per_premium_num" ||
-             name == "stickers_premium_by_emoji_num";
+             name == "saved_gifs_limit_premium" || name == "session_count" || name == "since_last_open" ||
+             name == "stickers_faved_limit_default" || name == "stickers_faved_limit_premium" ||
+             name == "stickers_normal_by_emoji_per_premium_num" || name == "stickers_premium_by_emoji_num";
     case 'v':
       return name == "video_note_size_max";
     case 'w':
@@ -303,7 +303,7 @@ td_api::object_ptr<td_api::Update> OptionManager::get_internal_option_update(Sli
     auto days = narrow_cast<int32>(get_option_integer(name));
     if (days > 0) {
       vector<SuggestedAction> added_actions{SuggestedAction{SuggestedAction::Type::SetPassword, DialogId(), days}};
-      return get_update_suggested_actions_object(added_actions, {});
+      return get_update_suggested_actions_object(added_actions, {}, "get_internal_option_update");
     }
   }
   return nullptr;
@@ -524,7 +524,7 @@ td_api::object_ptr<td_api::OptionValue> OptionManager::get_option_synchronously(
       break;
     case 'v':
       if (name == "version") {
-        return td_api::make_object<td_api::optionValueString>("1.8.10");
+        return td_api::make_object<td_api::optionValueString>("1.8.13");
       }
       break;
   }
@@ -653,6 +653,9 @@ void OptionManager::set_option(const string &name, td_api::object_ptr<td_api::Op
       if (!is_bot && set_boolean_option("disable_top_chats")) {
         return;
       }
+      if (set_boolean_option("disable_network_statistics")) {
+        return;
+      }
       if (set_boolean_option("disable_persistent_network_statistics")) {
         return;
       }
@@ -670,6 +673,9 @@ void OptionManager::set_option(const string &name, td_api::object_ptr<td_api::Op
         return;
       }
       if (set_boolean_option("ignore_default_disable_notification")) {
+        return;
+      }
+      if (set_boolean_option("ignore_file_names")) {
         return;
       }
       if (set_boolean_option("ignore_inline_thumbnails")) {

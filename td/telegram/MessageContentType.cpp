@@ -118,6 +118,10 @@ StringBuilder &operator<<(StringBuilder &string_builder, MessageContentType cont
       return string_builder << "SuggestProfilePhoto";
     case MessageContentType::WriteAccessAllowed:
       return string_builder << "WriteAccessAllowed";
+    case MessageContentType::RequestedDialog:
+      return string_builder << "ChatShared";
+    case MessageContentType::WebViewWriteAccessAllowed:
+      return string_builder << "WebAppWriteAccessAllowed";
     default:
       UNREACHABLE();
       return string_builder;
@@ -180,6 +184,8 @@ bool is_allowed_media_group_content(MessageContentType content_type) {
     case MessageContentType::TopicEdit:
     case MessageContentType::SuggestProfilePhoto:
     case MessageContentType::WriteAccessAllowed:
+    case MessageContentType::RequestedDialog:
+    case MessageContentType::WebViewWriteAccessAllowed:
       return false;
     default:
       UNREACHABLE();
@@ -250,6 +256,8 @@ bool is_secret_message_content(int32 ttl, MessageContentType content_type) {
     case MessageContentType::TopicEdit:
     case MessageContentType::SuggestProfilePhoto:
     case MessageContentType::WriteAccessAllowed:
+    case MessageContentType::RequestedDialog:
+    case MessageContentType::WebViewWriteAccessAllowed:
       return false;
     default:
       UNREACHABLE();
@@ -313,6 +321,8 @@ bool is_service_message_content(MessageContentType content_type) {
     case MessageContentType::TopicEdit:
     case MessageContentType::SuggestProfilePhoto:
     case MessageContentType::WriteAccessAllowed:
+    case MessageContentType::RequestedDialog:
+    case MessageContentType::WebViewWriteAccessAllowed:
       return true;
     default:
       UNREACHABLE();
@@ -376,6 +386,8 @@ bool can_have_message_content_caption(MessageContentType content_type) {
     case MessageContentType::TopicEdit:
     case MessageContentType::SuggestProfilePhoto:
     case MessageContentType::WriteAccessAllowed:
+    case MessageContentType::RequestedDialog:
+    case MessageContentType::WebViewWriteAccessAllowed:
       return false;
     default:
       UNREACHABLE();

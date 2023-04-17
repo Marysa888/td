@@ -23,7 +23,9 @@ struct SuggestedAction {
     ViewChecksHint,
     ConvertToGigagroup,
     CheckPassword,
-    SetPassword
+    SetPassword,
+    UpgradePremium,
+    SubscribeToAnnualPremium
   };
   Type type_ = Type::Empty;
   DialogId dialog_id_;
@@ -67,7 +69,7 @@ inline bool operator<(const SuggestedAction &lhs, const SuggestedAction &rhs) {
 }
 
 td_api::object_ptr<td_api::updateSuggestedActions> get_update_suggested_actions_object(
-    const vector<SuggestedAction> &added_actions, const vector<SuggestedAction> &removed_actions);
+    const vector<SuggestedAction> &added_actions, const vector<SuggestedAction> &removed_actions, const char *source);
 
 void update_suggested_actions(vector<SuggestedAction> &suggested_actions,
                               vector<SuggestedAction> &&new_suggested_actions);

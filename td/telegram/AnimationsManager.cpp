@@ -22,7 +22,6 @@
 #include "td/telegram/Td.h"
 #include "td/telegram/td_api.h"
 #include "td/telegram/TdDb.h"
-#include "td/telegram/TdParameters.h"
 #include "td/telegram/telegram_api.h"
 
 #include "td/db/SqliteKeyValueAsync.h"
@@ -546,7 +545,7 @@ void AnimationsManager::load_saved_animations(Promise<Unit> &&promise) {
   }
   load_saved_animations_queries_.push_back(std::move(promise));
   if (load_saved_animations_queries_.size() == 1u) {
-    if (G()->parameters().use_file_db) {  // otherwise there is no sqlite_pmc, TODO
+    if (G()->use_sqlite_pmc()) {
       LOG(INFO) << "Trying to load saved animations from database";
       G()->td_db()->get_sqlite_pmc()->get("ans", PromiseCreator::lambda([](string value) {
                                             send_closure(G()->animations_manager(),
@@ -673,12 +672,10 @@ void AnimationsManager::add_saved_animation(const tl_object_ptr<td_api::InputFil
     return;
   }
 
-  auto r_file_id = td_->file_manager_->get_input_file_id(FileType::Animation, input_file, DialogId(), false, false);
-  if (r_file_id.is_error()) {
-    return promise.set_error(Status::Error(400, r_file_id.error().message()));  // TODO do not drop error code
-  }
+  TRY_RESULT_PROMISE(promise, file_id,
+                     td_->file_manager_->get_input_file_id(FileType::Animation, input_file, DialogId(), false, false));
 
-  add_saved_animation_impl(r_file_id.ok(), true, std::move(promise));
+  add_saved_animation_impl(file_id, true, std::move(promise));
 }
 
 void AnimationsManager::send_save_gif_query(FileId animation_id, bool unsave, Promise<Unit> &&promise) {
@@ -787,12 +784,9 @@ void AnimationsManager::remove_saved_animation(const tl_object_ptr<td_api::Input
     return;
   }
 
-  auto r_file_id = td_->file_manager_->get_input_file_id(FileType::Animation, input_file, DialogId(), false, false);
-  if (r_file_id.is_error()) {
-    return promise.set_error(Status::Error(400, r_file_id.error().message()));  // TODO do not drop error code
-  }
+  TRY_RESULT_PROMISE(promise, file_id,
+                     td_->file_manager_->get_input_file_id(FileType::Animation, input_file, DialogId(), false, false));
 
-  FileId file_id = r_file_id.ok();
   auto is_equal = [animation_id = file_id](FileId file_id) {
     return file_id == animation_id ||
            (file_id.get_remote() == animation_id.get_remote() && animation_id.get_remote() != 0);
@@ -861,7 +855,7 @@ void AnimationsManager::send_update_saved_animations(bool from_database) {
 }
 
 void AnimationsManager::save_saved_animations_to_database() {
-  if (G()->parameters().use_file_db) {
+  if (G()->use_sqlite_pmc()) {
     LOG(INFO) << "Save saved animations to database";
     AnimationListLogEvent log_event(saved_animation_ids_);
     G()->td_db()->get_sqlite_pmc()->set("ans", log_event_store(log_event).as_slice().str(), Auto());

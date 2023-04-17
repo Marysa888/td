@@ -58,8 +58,8 @@ class SessionCallback final : public Session::Callback {
     send_closure(parent_, &SessionProxy::on_server_salt_updated, std::move(server_salts));
   }
 
-  void on_update(BufferSlice &&update) final {
-    send_closure_later(G()->td(), &Td::on_update, std::move(update));
+  void on_update(BufferSlice &&update, uint64 auth_key_id) final {
+    send_closure_later(G()->td(), &Td::on_update, std::move(update), auth_key_id);
   }
 
   void on_result(NetQueryPtr query) final {
@@ -188,10 +188,13 @@ void SessionProxy::open_session(bool force) {
     if (need_destroy_) {
       return auth_key_state_ != AuthKeyState::Empty;
     }
+    if (is_main_) {
+      return true;
+    }
     if (auth_key_state_ != AuthKeyState::OK) {
       return false;
     }
-    return is_main_ || !pending_queries_.empty();
+    return !pending_queries_.empty();
   }();
   if (!should_open) {
     return;

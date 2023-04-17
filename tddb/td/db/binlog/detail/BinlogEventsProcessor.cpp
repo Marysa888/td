@@ -27,7 +27,7 @@ Status BinlogEventsProcessor::do_event(BinlogEvent &&event) {
     if (event.type_ == BinlogEvent::ServiceTypes::Empty) {
       *it += 1;
       empty_events_++;
-      events_[pos].clear();
+      events_[pos] = {};
     } else {
       event.flags_ &= ~BinlogEvent::Flags::Rewrite;
       total_raw_events_size_ += static_cast<int64>(event.raw_event_.size());
@@ -37,8 +37,8 @@ Status BinlogEventsProcessor::do_event(BinlogEvent &&event) {
     // just skip service events
   } else {
     if (!(event_ids_.empty() || event_ids_.back() < fixed_event_id)) {
-      return Status::Error(PSLICE() << offset_ << " " << event_ids_.size() << " " << event_ids_.back() << " "
-                                    << fixed_event_id << " " << event.public_to_string() << " " << total_events_ << " "
+      return Status::Error(PSLICE() << offset_ << ' ' << event_ids_.size() << ' ' << event_ids_.back() << ' '
+                                    << fixed_event_id << ' ' << event.public_to_string() << ' ' << total_events_ << ' '
                                     << total_raw_events_size_);
     }
     last_event_id_ = event.id_;
@@ -63,7 +63,10 @@ void BinlogEventsProcessor::compactify() {
   for (; event_ids_from != event_ids_.end(); event_ids_from++, events_from++) {
     if ((*event_ids_from & 1) == 0) {
       *event_ids_to++ = *event_ids_from;
-      *events_to++ = std::move(*events_from);
+      if (events_to != events_from) {
+        *events_to = std::move(*events_from);
+      }
+      events_to++;
     }
   }
   event_ids_.erase(event_ids_to, event_ids_.end());

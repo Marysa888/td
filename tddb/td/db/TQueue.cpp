@@ -247,17 +247,18 @@ class TQueueImpl final : public TQueue {
       }
     }
 
+    auto collect_deleted_event_ids_time = 0.0;
     if (callback_ != nullptr) {
       vector<uint64> deleted_log_event_ids;
+      deleted_log_event_ids.reserve(size - keep_count);
       for (auto it = q.events.begin(); it != end_it; ++it) {
         auto &event = it->second;
         if (event.log_event_id != 0) {
           deleted_log_event_ids.push_back(event.log_event_id);
         }
       }
-      for (auto log_event_id : deleted_log_event_ids) {
-        callback_->pop(log_event_id);
-      }
+      collect_deleted_event_ids_time = Time::now() - start_time;
+      callback_->pop_batch(std::move(deleted_log_event_ids));
     }
     auto callback_clear_time = Time::now() - start_time;
 
@@ -281,10 +282,12 @@ class TQueueImpl final : public TQueue {
     }
 
     auto clear_time = Time::now() - start_time;
-    if (clear_time > 0.01) {
+    if (clear_time > 0.02) {
       LOG(WARNING) << "Cleared " << (size - keep_count) << " TQueue events with total size "
                    << (total_event_length - q.total_event_length) << " in " << clear_time - callback_clear_time
-                   << " seconds and deleted them from callback in " << callback_clear_time << " seconds";
+                   << " seconds, collected their identifiers in " << collect_deleted_event_ids_time
+                   << " seconds, and deleted them from callback in "
+                   << callback_clear_time - collect_deleted_event_ids_time << " seconds";
     }
     return deleted_events;
   }
@@ -543,9 +546,14 @@ void TQueueBinlog<BinlogT>::pop(uint64 log_event_id) {
 }
 
 template <class BinlogT>
+void TQueueBinlog<BinlogT>::pop_batch(std::vector<uint64> log_event_ids) {
+  binlog_->erase_batch(std::move(log_event_ids));
+}
+
+template <class BinlogT>
 Status TQueueBinlog<BinlogT>::replay(const BinlogEvent &binlog_event, TQueue &q) const {
   TQueueLogEvent event;
-  TlParser parser(binlog_event.data_);
+  TlParser parser(binlog_event.get_data());
   int32 has_extra = binlog_event.type_ - BINLOG_EVENT_TYPE;
   if (has_extra != 0 && has_extra != 1) {
     return Status::Error("Wrong magic");
@@ -597,4 +605,9 @@ void TQueueMemoryStorage::close(Promise<> promise) {
   promise.set_value({});
 }
 
+void TQueue::StorageCallback::pop_batch(std::vector<uint64> log_event_ids) {
+  for (auto id : log_event_ids) {
+    pop(id);
+  }
+}
 }  // namespace td

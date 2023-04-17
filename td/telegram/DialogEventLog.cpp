@@ -41,7 +41,8 @@ static td_api::object_ptr<td_api::ChatEventAction> get_chat_event_action_object(
       return td_api::make_object<td_api::chatEventMemberJoined>();
     case telegram_api::channelAdminLogEventActionParticipantJoinByInvite::ID: {
       auto action = move_tl_object_as<telegram_api::channelAdminLogEventActionParticipantJoinByInvite>(action_ptr);
-      DialogInviteLink invite_link(std::move(action->invite_), "channelAdminLogEventActionParticipantJoinByInvite");
+      DialogInviteLink invite_link(std::move(action->invite_), true,
+                                   "channelAdminLogEventActionParticipantJoinByInvite");
       if (!invite_link.is_valid()) {
         LOG(ERROR) << "Wrong invite link: " << invite_link;
         return nullptr;
@@ -51,7 +52,8 @@ static td_api::object_ptr<td_api::ChatEventAction> get_chat_event_action_object(
     }
     case telegram_api::channelAdminLogEventActionParticipantJoinByRequest::ID: {
       auto action = move_tl_object_as<telegram_api::channelAdminLogEventActionParticipantJoinByRequest>(action_ptr);
-      DialogInviteLink invite_link(std::move(action->invite_), "channelAdminLogEventActionParticipantJoinByRequest");
+      DialogInviteLink invite_link(std::move(action->invite_), true,
+                                   "channelAdminLogEventActionParticipantJoinByRequest");
       UserId approver_user_id(action->approved_by_);
       if (!approver_user_id.is_valid()) {
         return nullptr;
@@ -135,9 +137,9 @@ static td_api::object_ptr<td_api::ChatEventAction> get_chat_event_action_object(
     }
     case telegram_api::channelAdminLogEventActionChangePhoto::ID: {
       auto action = move_tl_object_as<telegram_api::channelAdminLogEventActionChangePhoto>(action_ptr);
+      auto old_photo = get_photo(td, std::move(action->prev_photo_), DialogId(channel_id));
+      auto new_photo = get_photo(td, std::move(action->new_photo_), DialogId(channel_id));
       auto file_manager = td->file_manager_.get();
-      auto old_photo = get_photo(file_manager, std::move(action->prev_photo_), DialogId(channel_id));
-      auto new_photo = get_photo(file_manager, std::move(action->new_photo_), DialogId(channel_id));
       return td_api::make_object<td_api::chatEventPhotoChanged>(get_chat_photo_object(file_manager, old_photo),
                                                                 get_chat_photo_object(file_manager, new_photo));
     }
@@ -259,8 +261,10 @@ static td_api::object_ptr<td_api::ChatEventAction> get_chat_event_action_object(
     }
     case telegram_api::channelAdminLogEventActionExportedInviteEdit::ID: {
       auto action = move_tl_object_as<telegram_api::channelAdminLogEventActionExportedInviteEdit>(action_ptr);
-      DialogInviteLink old_invite_link(std::move(action->prev_invite_), "channelAdminLogEventActionExportedInviteEdit");
-      DialogInviteLink new_invite_link(std::move(action->new_invite_), "channelAdminLogEventActionExportedInviteEdit");
+      DialogInviteLink old_invite_link(std::move(action->prev_invite_), true,
+                                       "channelAdminLogEventActionExportedInviteEdit");
+      DialogInviteLink new_invite_link(std::move(action->new_invite_), true,
+                                       "channelAdminLogEventActionExportedInviteEdit");
       if (!old_invite_link.is_valid() || !new_invite_link.is_valid()) {
         LOG(ERROR) << "Wrong edited invite link: " << old_invite_link << " -> " << new_invite_link;
         return nullptr;
@@ -271,7 +275,7 @@ static td_api::object_ptr<td_api::ChatEventAction> get_chat_event_action_object(
     }
     case telegram_api::channelAdminLogEventActionExportedInviteRevoke::ID: {
       auto action = move_tl_object_as<telegram_api::channelAdminLogEventActionExportedInviteRevoke>(action_ptr);
-      DialogInviteLink invite_link(std::move(action->invite_), "channelAdminLogEventActionExportedInviteRevoke");
+      DialogInviteLink invite_link(std::move(action->invite_), true, "channelAdminLogEventActionExportedInviteRevoke");
       if (!invite_link.is_valid()) {
         LOG(ERROR) << "Wrong revoked invite link: " << invite_link;
         return nullptr;
@@ -281,7 +285,7 @@ static td_api::object_ptr<td_api::ChatEventAction> get_chat_event_action_object(
     }
     case telegram_api::channelAdminLogEventActionExportedInviteDelete::ID: {
       auto action = move_tl_object_as<telegram_api::channelAdminLogEventActionExportedInviteDelete>(action_ptr);
-      DialogInviteLink invite_link(std::move(action->invite_), "channelAdminLogEventActionExportedInviteDelete");
+      DialogInviteLink invite_link(std::move(action->invite_), true, "channelAdminLogEventActionExportedInviteDelete");
       if (!invite_link.is_valid()) {
         LOG(ERROR) << "Wrong deleted invite link: " << invite_link;
         return nullptr;
@@ -364,7 +368,7 @@ static td_api::object_ptr<td_api::ChatEventAction> get_chat_event_action_object(
     }
     case telegram_api::channelAdminLogEventActionCreateTopic::ID: {
       auto action = move_tl_object_as<telegram_api::channelAdminLogEventActionCreateTopic>(action_ptr);
-      auto topic_info = ForumTopicInfo(action->topic_);
+      auto topic_info = ForumTopicInfo(td, action->topic_);
       if (topic_info.is_empty()) {
         return nullptr;
       }
@@ -373,8 +377,8 @@ static td_api::object_ptr<td_api::ChatEventAction> get_chat_event_action_object(
     }
     case telegram_api::channelAdminLogEventActionEditTopic::ID: {
       auto action = move_tl_object_as<telegram_api::channelAdminLogEventActionEditTopic>(action_ptr);
-      auto old_topic_info = ForumTopicInfo(action->prev_topic_);
-      auto new_topic_info = ForumTopicInfo(action->new_topic_);
+      auto old_topic_info = ForumTopicInfo(td, action->prev_topic_);
+      auto new_topic_info = ForumTopicInfo(td, action->new_topic_);
       if (old_topic_info.is_empty() || new_topic_info.is_empty() ||
           old_topic_info.get_top_thread_message_id() != new_topic_info.get_top_thread_message_id()) {
         LOG(ERROR) << "Receive " << to_string(action);
@@ -395,7 +399,7 @@ static td_api::object_ptr<td_api::ChatEventAction> get_chat_event_action_object(
     }
     case telegram_api::channelAdminLogEventActionDeleteTopic::ID: {
       auto action = move_tl_object_as<telegram_api::channelAdminLogEventActionDeleteTopic>(action_ptr);
-      auto topic_info = ForumTopicInfo(action->topic_);
+      auto topic_info = ForumTopicInfo(td, action->topic_);
       if (topic_info.is_empty()) {
         return nullptr;
       }
@@ -406,10 +410,10 @@ static td_api::object_ptr<td_api::ChatEventAction> get_chat_event_action_object(
       ForumTopicInfo old_topic_info;
       ForumTopicInfo new_topic_info;
       if (action->prev_topic_ != nullptr) {
-        old_topic_info = ForumTopicInfo(action->prev_topic_);
+        old_topic_info = ForumTopicInfo(td, action->prev_topic_);
       }
       if (action->new_topic_ != nullptr) {
-        new_topic_info = ForumTopicInfo(action->new_topic_);
+        new_topic_info = ForumTopicInfo(td, action->new_topic_);
       }
       if (old_topic_info.is_empty() && new_topic_info.is_empty()) {
         return nullptr;
@@ -592,11 +596,8 @@ void get_dialog_event_log(Td *td, DialogId dialog_id, const string &query, int64
 
   vector<tl_object_ptr<telegram_api::InputUser>> input_users;
   for (auto user_id : user_ids) {
-    auto r_input_user = td->contacts_manager_->get_input_user(user_id);
-    if (r_input_user.is_error()) {
-      return promise.set_error(r_input_user.move_as_error());
-    }
-    input_users.push_back(r_input_user.move_as_ok());
+    TRY_RESULT_PROMISE(promise, input_user, td->contacts_manager_->get_input_user(user_id));
+    input_users.push_back(std::move(input_user));
   }
 
   td->create_handler<GetChannelAdminLogQuery>(std::move(promise))

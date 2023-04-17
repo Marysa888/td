@@ -405,7 +405,7 @@ class FakeBinlog final
     cancel_timeout();
     for (auto &pending : pending_events_) {
       auto &event = pending.event;
-      if (!event.empty()) {
+      if (!event.is_empty()) {
         // LOG(ERROR) << "FORGET EVENT: " << event.id_ << " " << event;
       }
     }
@@ -439,7 +439,7 @@ class FakeBinlog final
     for (size_t i = 0; i <= pos; i++) {
       auto &pending = pending_events_[i];
       auto event = std::move(pending.event);
-      if (!event.empty()) {
+      if (!event.is_empty()) {
         LOG(INFO) << "SAVE EVENT: " << event.id_ << " " << event;
         events_processor_.add_event(std::move(event)).ensure();
       }
@@ -764,11 +764,11 @@ class Master final : public Actor {
     bob_ = create_actor<SecretChatProxy>("SecretChatProxy bob", "bob", actor_shared(this, 2));
     send_closure(alice_.get_actor_unsafe()->actor_, &SecretChatActor::create_chat, UserId(static_cast<int64>(2)), 0,
                  123, PromiseCreator::lambda([actor_id = actor_id(this)](Result<SecretChatId> res) {
-                   send_closure(actor_id, &Master::got_secret_chat_id, std::move(res), false);
+                   send_closure(actor_id, &Master::on_get_secret_chat_id, std::move(res), false);
                  }));
   }
 
-  void got_secret_chat_id(Result<SecretChatId> res, bool dummy) {
+  void on_get_secret_chat_id(Result<SecretChatId> res, bool dummy) {
     CHECK(res.is_ok());
     auto id = res.move_as_ok();
     LOG(INFO) << "SecretChatId = " << id;
@@ -825,14 +825,14 @@ class Master final : public Actor {
   }
   void process_net_query(my_api::messages_getDhConfig &&get_dh_config, NetQueryPtr net_query,
                          ActorShared<NetQueryCallback> callback) {
-    //LOG(INFO) << "Got query " << to_string(get_dh_config);
+    //LOG(INFO) << "Receive query " << to_string(get_dh_config);
     my_api::messages_dhConfig config;
     config.p_ = BufferSlice(base64url_decode(prime_base64).move_as_ok());
     config.g_ = g;
     config.version_ = 12;
     auto storer = TLObjectStorer<my_api::messages_dhConfig>(config);
     BufferSlice answer(storer.size());
-    auto real_size = storer.store(answer.as_slice().ubegin());
+    auto real_size = storer.store(answer.as_mutable_slice().ubegin());
     CHECK(real_size == answer.size());
     net_query->set_ok(std::move(answer));
     send_closure(std::move(callback), &NetQueryCallback::on_result, std::move(net_query));
@@ -857,7 +857,7 @@ class Master final : public Actor {
     my_api::encryptedChat encrypted_chat(123, 321, 0, 1, 2, BufferSlice(), request_encryption.key_fingerprint_);
     auto storer = TLObjectStorer<my_api::encryptedChat>(encrypted_chat);
     BufferSlice answer(storer.size());
-    auto real_size = storer.store(answer.as_slice().ubegin());
+    auto real_size = storer.store(answer.as_mutable_slice().ubegin());
     CHECK(real_size == answer.size());
     net_query->set_ok(std::move(answer));
     send_closure(std::move(callback), &NetQueryCallback::on_result, std::move(net_query));
@@ -899,8 +899,8 @@ class Master final : public Actor {
   void process_net_query_send_encrypted(BufferSlice data, NetQueryPtr net_query,
                                         ActorShared<NetQueryCallback> callback) {
     BufferSlice answer(8);
-    answer.as_slice().fill(0);
-    as<int32>(answer.as_slice().begin()) = static_cast<int32>(my_api::messages_sentEncryptedMessage::ID);
+    answer.as_mutable_slice().fill(0);
+    as<int32>(answer.as_mutable_slice().begin()) = static_cast<int32>(my_api::messages_sentEncryptedMessage::ID);
     net_query->set_ok(std::move(answer));
     send_closure(std::move(callback), &NetQueryCallback::on_result, std::move(net_query));
 
@@ -914,7 +914,7 @@ class Master final : public Actor {
   int32 last_ping_ = std::numeric_limits<int32>::max();
   void on_inbound_message(string message, Promise<> promise) {
     promise.set_value(Unit());
-    LOG(INFO) << "GOT INBOUND MESSAGE: " << message << " " << get_link_token();
+    LOG(INFO) << "Receive inbound message: " << message << " " << get_link_token();
     int32 cnt;
     int x = std::sscanf(message.c_str(), "PING: %d", &cnt);
     if (x != 1) {
@@ -967,7 +967,7 @@ class Master final : public Actor {
   std::map<int64, Message> sent_messages_;
 
   void hangup_shared() final {
-    LOG(INFO) << "GOT HANGUP: " << get_link_token();
+    LOG(INFO) << "Receive hang up: " << get_link_token();
     send_closure(from(), &SecretChatProxy::on_closed);
   }
 };
